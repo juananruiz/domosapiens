@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DomoSapiens</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap-icons.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+    <script src="js/layout.js"></script>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="chat-container">
+            <div class="header">
+                <img src="images/og.png" alt="Ollama Logo" onerror="handleImageError()" onload="handleImageLoad()">
+            </div>
+            <div class="messages" id="chat-messages"></div>
+            <div class="input-area">
+                <textarea id="user-prompt" placeholder="Escribe tu mensaje aquí..."></textarea>
+                <div class="input-controls">
+                    <select id="model-selector">
+                        <option value="deepseek-r1:14b">DeepSeek R1 - 14B</option>
+                        <option value="llama3.2:latest">Llama 3.2 - 3B</option>
+                        <option value="phi4:latest">Phi4 - 16B</option>
+                    </select>
+                    <button onclick="sendMessage()"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21.726 2.274a1 1 0 00-1.078-.216L2.648 8.066a1 1 0 00-.086 1.87l7.144 3.572 3.572 7.144a1 1 0 001.87-.086l6.008-18a1 1 0 00-.43-.862zM4.891 9.165l13.477-4.492-7.87 7.87-5.607-3.378zM14.835 19.109l-3.378-5.607 7.87-7.87-4.492 13.477z"/></svg>Enviar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/vendor/jquery.min.js"></script>
+    <script src="js/vendor/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_URL = 'http://localhost:11434/api/generate';
+
+        // Cargar el último modelo seleccionado o usar el primero por defecto
+        document.getElementById('model-selector').value = localStorage.getItem('selectedModel') || 'deepseek-r1:14b';
+
+        // Guardar la selección del modelo cuando cambie
+        document.getElementById('model-selector').addEventListener('change', function(e) {
+            localStorage.setItem('selectedModel', e.target.value);
+        });
+
+        // Comprobar si hay un prompt pendiente al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            const pendingPrompt = localStorage.getItem('pendingPrompt');
+            if (pendingPrompt) {
+                document.getElementById('user-prompt').value = pendingPrompt;
+                document.getElementById('user-prompt').focus();
+                localStorage.removeItem('pendingPrompt'); // Limpiar el prompt pendiente
+            }
+        });
+
+        function handleImageError() {
+            document.querySelector('.header h1').style.display = 'block';
+        }
+
+        function handleImageLoad() {
+            document.querySelector('.header h1').style.display = 'none';
+        }
+
+        async function sendMessage() {
+            const userInput = document.getElementById('user-prompt');
+            const message = userInput.value;
+            if (!message.trim()) return;
+            
+            userInput.value = ''; // Limpiar el input después de enviar
+            addMessage(message, 'user');
+            
+            try {
+                const selectedModel = document.getElementById('model-selector').value;
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        prompt: message,
+                        stream: false
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error('Error en la solicitud');
+                }
+
+                const data = await response.json();
+                if (data && data.response) {
+                    addMessage(data.response, 'assistant');
+                } else {
+                    throw new Error('Respuesta inválida del servidor');
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Error al enviar el mensaje: ' + error.message, 'system');
+            }
+        }
+
+        function addMessage(text, sender) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            if (sender === 'assistant') {
+                // Procesar el contenido think
+                const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
+                if (thinkMatch) {
+                    // Extraer y formatear el contenido think
+                    const thinkContent = document.createElement('span');
+                    thinkContent.className = 'think-content';
+                    thinkContent.textContent = thinkMatch[1].trim();
+                    messageDiv.appendChild(thinkContent);
+                    
+                    // Añadir el resto del texto
+                    const remainingText = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+                    if (remainingText) {
+                        const regularContent = document.createElement('span');
+                        const modelName = document.getElementById('model-selector').value.split(':')[0];
+                        regularContent.textContent = `${modelName}: ${remainingText}`;
+                        messageDiv.appendChild(regularContent);
+                    }
+                } else {
+                    const modelName = document.getElementById('model-selector').value.split(':')[0];
+                    messageDiv.textContent = `${modelName}: ${text}`;
+                }
+            } else {
+                messageDiv.textContent = `Tú: ${text}`;
+            }
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+    </script>
+</body>
+</html>
