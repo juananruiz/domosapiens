@@ -12,6 +12,14 @@ Para usarlo, necesitarás:
 1. Tener ollama corriendo (asegúrate de que está configurada correctamente).
 2. Haber bajado algunos modelos locales
 3. Asegurarte de que tu servidor local permita CORS si estás trabajando en diferentes puertos.
+4. Lanzar el servidor: `nohup python3 server.py > "logs/server_$(date +%Y%m%d_%H%M%S).log" 2>&1 &`
+5. Para detener el servidor:
+   ```bash
+   # Encontrar el PID del proceso
+   ps aux | grep "server.py"
+   # Detener el proceso usando el PID encontrado
+   kill <PID>
+   ```
 
 Para acceder ve a http://localhost:8800 en tu navegador.
 ¡A disfrutar! 😊
@@ -29,7 +37,7 @@ curl -X POST "http://localhost:11434/api/generate" \
 ```
 
 
-### server.py
+### Backend - server.py
 
 ####Optimizando el Código Original
 
