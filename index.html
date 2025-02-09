@@ -8,6 +8,7 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link href="css/bootstrap.min.css" rel="stylesheet">
     <link href="css/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/domosapiens.css" rel="stylesheet">
     <link href="styles.css" rel="stylesheet">
     <script src="js/layout.js"></script>
 </head>
@@ -27,6 +28,12 @@
                         <option value="phi4:latest">Phi4 - 16B</option>
                     </select>
                     <button onclick="sendMessage()"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21.726 2.274a1 1 0 00-1.078-.216L2.648 8.066a1 1 0 00-.086 1.87l7.144 3.572 3.572 7.144a1 1 0 001.87-.086l6.008-18a1 1 0 00-.43-.862zM4.891 9.165l13.477-4.492-7.87 7.87-5.607-3.378zM14.835 19.109l-3.378-5.607 7.87-7.87-4.492 13.477z"/></svg>Enviar</button>
+                    <button onclick="clearHistory()" class="btn-clear" title="Limpiar historial">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                            <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
         </div>
@@ -34,8 +41,10 @@
 
     <script src="js/vendor/jquery.min.js"></script>
     <script src="js/vendor/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
         const API_URL = 'http://localhost:11434/api/generate';
+        let conversationHistory = []; // Almacenar el historial de la conversación
 
         // Cargar el último modelo seleccionado o usar el primero por defecto
         document.getElementById('model-selector').value = localStorage.getItem('selectedModel') || 'deepseek-r1:14b';
@@ -52,6 +61,15 @@
                 document.getElementById('user-prompt').value = pendingPrompt;
                 document.getElementById('user-prompt').focus();
                 localStorage.removeItem('pendingPrompt'); // Limpiar el prompt pendiente
+            }
+            // Cargar el historial de conversación guardado
+            const savedHistory = localStorage.getItem('conversationHistory');
+            if (savedHistory) {
+                conversationHistory = JSON.parse(savedHistory);
+                // Mostrar mensajes anteriores
+                conversationHistory.forEach(msg => {
+                    addMessage(msg.content, msg.role, false);
+                });
             }
         });
 
@@ -73,6 +91,17 @@
             
             try {
                 const selectedModel = document.getElementById('model-selector').value;
+                
+                // Crear el prompt con el contexto de la conversación
+                let contextPrompt = '';
+                if (conversationHistory.length > 0) {
+                    contextPrompt = conversationHistory.map(msg => 
+                        `${msg.role === 'user' ? 'Usuario' : 'Asistente'}: ${msg.content}`
+                    ).join('\n') + '\nUsuario: ' + message;
+                } else {
+                    contextPrompt = message;
+                }
+
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: {
@@ -80,7 +109,7 @@
                     },
                     body: JSON.stringify({
                         model: selectedModel,
-                        prompt: message,
+                        prompt: contextPrompt,
                         stream: false
                     }),
                 });
@@ -102,46 +131,91 @@
             }
         }
 
-        function addMessage(text, sender) {
-            const chatMessages = document.getElementById('chat-messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
-            
-            if (sender === 'assistant') {
-                // Procesar el contenido think
-                const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
-                if (thinkMatch) {
-                    // Extraer y formatear el contenido think
-                    const thinkContent = document.createElement('span');
-                    thinkContent.className = 'think-content';
-                    thinkContent.textContent = thinkMatch[1].trim();
-                    messageDiv.appendChild(thinkContent);
-                    
-                    // Añadir el resto del texto
-                    const remainingText = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
-                    if (remainingText) {
-                        const regularContent = document.createElement('span');
-                        const modelName = document.getElementById('model-selector').value.split(':')[0];
-                        regularContent.textContent = `${modelName}: ${remainingText}`;
-                        messageDiv.appendChild(regularContent);
-                    }
-                } else {
-                    const modelName = document.getElementById('model-selector').value.split(':')[0];
-                    messageDiv.textContent = `${modelName}: ${text}`;
-                }
-            } else {
-                messageDiv.textContent = `Tú: ${text}`;
-            }
-            
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+        // Configuración de marked para un mejor renderizado
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            headerIds: false,
+            mangle: false
+        });
+
+        // Función para copiar texto al portapapeles
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Opcional: mostrar algún feedback visual
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = '¡Copiado!';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 2000);
+            });
         }
 
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                sendMessage();
+        function addMessage(text, sender, save = true) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            
+            // Preparar el prefijo del mensaje según el remitente
+            let prefix = '';
+            if (sender === 'user') {
+                prefix = 'Tú';
+            } else if (sender === 'assistant') {
+                const modelName = document.getElementById('model-selector').value.split(':')[0];
+                prefix = modelName;
             }
+
+            // Procesar el texto según el remitente
+            let processedText = text;
+            if (sender === 'assistant') {
+                processedText = marked.parse(text, {
+                    sanitize: true
+                });
+            } else {
+                processedText = text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+            }
+            
+            // Crear el contenido del mensaje
+            messageDiv.innerHTML = `
+                <div class="message-author">${prefix}</div>
+                <div class="message-content">
+                    ${processedText}
+                    ${sender === 'assistant' ? 
+                        `<button class="copy-button" onclick="copyToClipboard('${text.replace(/'/g, "\\'")}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M13 0H6a2 2 0 0 0-2 2 2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2 2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zm0 13V4a2 2 0 0 0-2-2H5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1zM3 4a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4z"/>
+                            </svg>
+                        </button>` 
+                        : ''}
+                </div>
+            `;
+            
+            // Hacer que los enlaces se abran en una nueva pestaña
+            messageDiv.querySelectorAll('a').forEach(link => {
+                link.setAttribute('target', '_blank');
+                link.setAttribute('rel', 'noopener noreferrer');
+            });
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            // Guardar mensaje en el historial si save es true
+            if (save) {
+                conversationHistory.push({
+                    role: sender,
+                    content: text
+                });
+                // Guardar en localStorage
+                localStorage.setItem('conversationHistory', JSON.stringify(conversationHistory));
+            }
+        }
+
+        // Agregar botón para limpiar el historial
+        function clearHistory() {
+            conversationHistory = [];
+            localStorage.removeItem('conversationHistory');
+            document.getElementById('chat-messages').innerHTML = '';
         }
     </script>
 </body>
